@@ -1,0 +1,142 @@
+---
+title: "R Notebook"
+output: RNN model
+---
+carregando bibliotecas
+
+```{r}
+library("rattle")
+library("dplyr")
+library("rnn")
+library("ggplot2")
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+Carregando dados
+```{r}
+data <- read.csv("db_balanco_temp_geracao.csv")
+
+#Inverter a ordem das ações para pegar da última para a ´primeira
+data <-data[order(data$data, decreasing = TRUE),]
+
+
+```
+
+Criando dataset com os dados temporais da carga
+```{r}
+carga <- data$mean
+
+carga_anterior <- lead(carga,n=1L)
+
+data_analise <- data.frame(carga)
+data_analise$carga_anterior <- carga_anterior
+
+
+summary(data_analise)
+```
+Tratando os dados
+```{r}
+
+#exclui NA
+data_analise = na.omit(data_analise)
+data_analise <- subset(data_analise, !rowSums(data_analise == 0))
+data_used <- data_analise[1:1100,]
+
+summary(data_used)
+
+x <- data_used[,2]
+y <- data_used[,1]
+
+
+X <- matrix(x, nrow = 100)
+Y <- matrix(y, nrow = 100)
+
+
+Yscaled <- (Y - min(Y)) / (max(Y) - min(Y))
+Xscaled <- (X - min(X)) / (max(X) - min(X))
+Y <- Yscaled
+X <- Xscaled
+```
+
+Separando o treino e teste
+```{r}
+train=1:8
+test=9:11
+
+set.seed(12)
+model <- trainr(Y = Y[,train],
+                X = X[,train],
+                learningrate = 0.05,
+                hidden_dim = 20,
+                numepochs = 500,
+                network_type = "rnn"
+                )
+
+
+#no conjunto de treinamento
+Ytrain <- t(matrix(predictr(model, X[,train]),nrow=1))
+Yreal <- t(matrix(Y[,train],nrow=1))
+```
+Plot graph de erros
+
+```{r}
+model$error
+#poucas épocas?
+plot(colMeans(model$error),type='l',xlab='epoch',ylab='errors')
+```
+
+Plot graph para treino
+
+```{r}
+#Percentual de variação em uma variável explicada por outra
+rsq <- function(y_actual,y_predict){
+  cor(y_actual,y_predict)^2
+}
+
+rsq(Yreal,Ytrain)
+
+plot(Ytrain, type = "l", col = "darkred",
+     main = "Actual vs trained load: training set",
+     ylab = "Y,Ytrain")
+lines(Yreal, col = "darkblue", type = "l")
+legend("bottomright", c("Treino", "Atual"),
+col = c("red","black"),
+lty = c(1,1), lwd = c(1,1))
+
+```
+Testando modelo
+```{r}
+#no conjunto de teste
+Ytest=matrix(Y[,test], nrow = 1)
+Ytest = t(Ytest)
+Yp <- predictr(model, Y[,test])
+Ypredicted=matrix(Yp, nrow = 1)
+Ypredicted=t(Ypredicted)
+
+result_data <- data.frame(Ytest)
+result_data$Ypredicted <- Ypredicted     
+
+rsq(result_data$Ytest, result_data$Ypredicted)
+
+mean(result_data$Ytest)
+mean(result_data$Ypredicted)
+```
+
+
+Plot graph teste 
+```{r}
+plot(as.vector(t(result_data$Ytest)), col = 'red', type='l',
+main = "Actual vs Predicted load: testing set",
+ylab = "Y,Yp")
+lines(as.vector(t(Yp)), type = 'l', col = 'black')
+legend("bottomright", c("Predicted", "Actual"),
+col = c("red","black"),
+lty = c(1,1), lwd = c(1,1))
+```
+
+
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
